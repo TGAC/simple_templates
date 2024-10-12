@@ -23,7 +23,7 @@
 #include "string_utils.h"
 #include "byte_buffer.h"
 #include "json_util.h"
-
+#include "filesystem_utils.h"
 
 
 
@@ -60,6 +60,11 @@ static const char *SetTemplatesDir (cmd_parms *cmd_p, void *cfg_p, const char *a
 
 static const char *GetParameterValue (apr_table_t *params_p, const char * const param_s, apr_pool_t *pool_p);
 
+static const json_t *GetRecordByKey (const json_t *records_p, const char * const key_s, const char * const search_s);
+
+static char * RunModule (const char *records_file_s, const char * const record_key_s, const char * const record_value_s, const char *const template_filename_s);
+
+
 /*
  * STATIC VARIABLES
  */
@@ -68,7 +73,7 @@ static const command_rec s_template_directives [] =
 {
 	AP_INIT_TAKE1 ("SimpleTemplateRecordsFile", SetRecordsFile, NULL, ACCESS_CONF, "The filename of the records file to use"),
 	AP_INIT_TAKE1 ("SimpleTemplateRootURL", SetRootURL, NULL, ACCESS_CONF, "The root url to determine the template from"),
-	AP_INIT_TAKE1 ("SimpleTemplateTemplatesDir", SetRootURL, NULL, ACCESS_CONF, "The root url to determine the template from"),
+	AP_INIT_TAKE1 ("SimpleTemplateTemplatesDir", SetTemplatesDir, NULL, ACCESS_CONF, "The root directory toring the templates"),
 
 	{ NULL }
 };
@@ -199,27 +204,52 @@ static int SimpleTemplateHandler (request_rec *req_p)
 			if (req_p -> method_number == M_GET)
 				{
 					ModSimpleTemplateConfig *config_p = ap_get_module_config (req_p -> per_dir_config, &simple_template_module);
+					char *relative_url_s = req_p -> uri;
 
-					char *api_call_s = req_p -> uri;
+					res = HTTP_INTERNAL_SERVER_ERROR;
 
-					if (api_call_s)
+					if (relative_url_s)
 						{
-							bool loop_flag = false;
 							apr_table_t *params_p = NULL;
+							char *template_filename_s = NULL;
 
 							/* jump to the rest api call string */
 							if (config_p -> mstc_root_url_s)
 								{
-									api_call_s += strlen (config_p -> mstc_root_url_s);
+									relative_url_s += strlen (config_p -> mstc_root_url_s);
 								}
 
-							ap_args_to_table (req_p, &params_p);
+							template_filename_s = MakeFilename (config_p -> mstc_templates_dir_s, relative_url_s);
 
-
-							while (loop_flag)
+							if (template_filename_s)
 								{
+									const char *record_key_s = NULL;
+									char *res_s = NULL;
 
+									ap_args_to_table (req_p, &params_p);
+
+									record_key_s = apr_table_get (params_p, "key");
+
+									if (record_key_s)
+										{
+											const char *record_value_s = apr_table_get (params_p, "value");
+
+											if (record_value_s)
+												{
+													res_s = RunModule (config_p -> mstc_records_s, record_key_s, record_value_s, template_filename_s);
+
+													if (res_s)
+														{
+															ap_rputs (res_s, req_p);
+															res = OK;
+														}
+												}
+
+										}
+
+									FreeCopiedString (template_filename_s);
 								}
+
 						}
 
 				}		/* if (req_p -> method_number == M_GET) */
@@ -243,12 +273,8 @@ static int SimpleTemplateHandler (request_rec *req_p)
   replace the keys within the template by the project's values
  */
  
-static const json_t *GetRecordByKey (const json_t *records_p, const char * const key_s, const char * const search_s);
 
-static char * RunModule (const char *records_file_s, const char * const key_s, const char * const search_s, const char *const template_filename_s);
-
-
-static char * RunModule (const char *records_file_s, const char * const key_s, const char * const search_s, const char *const template_filename_s)
+static char * RunModule (const char *records_file_s, const char * const record_key_s, const char * const record_value_s, const char *const template_filename_s)
 {
 	char *result_s = NULL;
 	json_error_t err;
@@ -256,7 +282,7 @@ static char * RunModule (const char *records_file_s, const char * const key_s, c
 
 	if (records_p)
 		{
-			const json_t *record_p = GetRecordByKey (records_p, key_s, search_s);
+			const json_t *record_p = GetRecordByKey (records_p, record_key_s, record_value_s);
 
 			if (record_p)
 				{
@@ -274,8 +300,9 @@ static char * RunModule (const char *records_file_s, const char * const key_s, c
 									char *cursor_p = template_s;
 									char *start_p = NULL;
 									const char * const start_tag_s = "${";
-									const char * const end_tag_s = "${";
+									const char * const end_tag_s = "}";
 									const size_t start_tag_length = strlen (start_tag_s);
+									const size_t end_tag_length = strlen (end_tag_s);
 
 									while ((start_p = strstr (cursor_p, start_tag_s)) != NULL)
 										{
@@ -305,10 +332,43 @@ static char * RunModule (const char *records_file_s, const char * const key_s, c
 
 																						 }
 																				 }
+																			 else if (json_is_array (value_p))
+																				 {
+																					 const size_t array_size = json_array_size (value_p);
+																					 size_t i;
+																					 bool first_entry_flag = true;
+
+																					 for (i = 0; i < array_size; ++ i)
+																						 {
+																							 const json_t *element_p = json_array_get (value_p, i);
+
+																							 if (json_is_string (element_p))
+																								 {
+																									 const char *value_s = json_string_value (value_p);
+
+																									 if (first_entry_flag)
+																										 {
+																											 if (AppendStringToByteBuffer (buffer_p, value_s))
+																												 {
+																													 first_entry_flag = false;
+																												 }
+																										 }
+																									 else
+																										 {
+																											 if (!AppendStringsToByteBuffer (buffer_p, ", ", value_s, NULL))
+																												 {
+
+																												 }
+																										 }
+																								 }
+																						 }
+
+
+																				 }
 																		 }
 																 }
 
-															 cursor_p = end_p + 1;
+															 cursor_p = end_p + end_tag_length;
 														 }
 												}
 										}
@@ -372,4 +432,5 @@ static const char *GetParameterValue (apr_table_t *params_p, const char * const 
 
 	return value_s;
 }
+
 
