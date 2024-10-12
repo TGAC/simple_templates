@@ -213,6 +213,11 @@ static int SimpleTemplateHandler (request_rec *req_p)
 							apr_table_t *params_p = NULL;
 							char *template_filename_s = NULL;
 
+							if (*relative_url_s == '/')
+								{
+									++ relative_url_s;
+								}
+
 							/* jump to the rest api call string */
 							if (config_p -> mstc_root_url_s)
 								{
@@ -241,6 +246,8 @@ static int SimpleTemplateHandler (request_rec *req_p)
 													if (res_s)
 														{
 															ap_rputs (res_s, req_p);
+															ap_set_content_type (req_p, "text/html");
+
 															res = OK;
 														}
 												}
@@ -315,7 +322,7 @@ static char * RunModule (const char *records_file_s, const char * const record_k
 															 char *variable_s = NULL;
 
 															 start_p += start_tag_length;
-															 variable_s = CopyToNewString (start_p, end_p - 1 - start_p, false);
+															 variable_s = CopyToNewString (start_p, end_p - start_p, false);
 
 															 if (variable_s)
 																 {
@@ -344,7 +351,7 @@ static char * RunModule (const char *records_file_s, const char * const record_k
 
 																							 if (json_is_string (element_p))
 																								 {
-																									 const char *value_s = json_string_value (value_p);
+																									 const char *value_s = json_string_value (element_p);
 
 																									 if (first_entry_flag)
 																										 {
