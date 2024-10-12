@@ -1,0 +1,42 @@
+
+
+#
+# APACHE_DIR
+# ---------------
+#
+# This is the path where Apache httpd is installed. 
+#
+# E.g.
+# APACHE_DIR := /opt/apache
+APACHE_DIR := /home/billy/Applications/grassroots/apache
+
+
+#
+# LIB_PATHS
+# ---------------
+#
+# This is the path for any extra libraries that are required.
+# By default, this needs to be the path to where libstdc++.so
+# is stored. This can be found by running:
+#
+#		locate libstdc++.so
+#
+# and picking an appropriate path
+#
+# E.g.
+# LIB_PATHS := /usr/lib/gcc/x86_64-linux-gnu/5
+LIB_PATHS := /usr/lib/gcc/x86_64-linux-gnu/5
+
+#
+# INCLUDE_PATHS
+# ---------------
+#
+# This is the path for any extra header files that are required.
+# mod_grassroots_brapi now uses jansson to build its JSON objects
+# so this needs to be added to the include path. It also needs 
+# the path to the include files for the grassroots_field_trials
+# service available at https://github.com/TGAC/grassroots-service-field-trial
+#
+# E.g.
+# INCLUDE_PATHS := /opt/irods-externals/jansson2.7-0/include
+INCLUDE_PATHS := /opt/irods-externals/jansson2.7-0/include
