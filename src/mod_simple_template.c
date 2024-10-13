@@ -24,7 +24,7 @@
 #include "byte_buffer.h"
 #include "json_util.h"
 #include "filesystem_utils.h"
-
+#include "streams.h"
 
 
 
@@ -70,25 +70,25 @@ static char * RunModule (const char *records_file_s, const char * const record_k
  */
 
 static const command_rec s_template_directives [] =
-{
-	AP_INIT_TAKE1 ("SimpleTemplateRecordsFile", SetRecordsFile, NULL, ACCESS_CONF, "The filename of the records file to use"),
-	AP_INIT_TAKE1 ("SimpleTemplateRootURL", SetRootURL, NULL, ACCESS_CONF, "The root url to determine the template from"),
-	AP_INIT_TAKE1 ("SimpleTemplateTemplatesDir", SetTemplatesDir, NULL, ACCESS_CONF, "The root directory toring the templates"),
+		{
+				AP_INIT_TAKE1 ("SimpleTemplateRecordsFile", SetRecordsFile, NULL, ACCESS_CONF, "The filename of the records file to use"),
+				AP_INIT_TAKE1 ("SimpleTemplateRootURL", SetRootURL, NULL, ACCESS_CONF, "The root url to determine the template from"),
+				AP_INIT_TAKE1 ("SimpleTemplateTemplatesDir", SetTemplatesDir, NULL, ACCESS_CONF, "The root directory toring the templates"),
 
-	{ NULL }
-};
+				{ NULL }
+		};
 
 /* Define our module as an entity and assign a function for registering hooks  */
 module AP_MODULE_DECLARE_DATA simple_template_module =
-{
-	STANDARD20_MODULE_STUFF,
-	CreateSimpleTemplateDirectoryConfig,   	// Per-directory configuration handler
-	MergeSimpleTemplateDirectoryConfig,   	// Merge handler for per-directory configurations
-	CreateSimpleTemplateServerConfig,				// Per-server configuration handler
-	MergeSimpleTemplateServerConfig,				// Merge handler for per-server configurations
-	s_template_directives,			// Any directives we may have for httpd
-	RegisterHooks    					// Our hook registering function
-};
+		{
+				STANDARD20_MODULE_STUFF,
+				CreateSimpleTemplateDirectoryConfig,   	// Per-directory configuration handler
+				MergeSimpleTemplateDirectoryConfig,   	// Merge handler for per-directory configurations
+				CreateSimpleTemplateServerConfig,				// Per-server configuration handler
+				MergeSimpleTemplateServerConfig,				// Merge handler for per-server configurations
+				s_template_directives,			// Any directives we may have for httpd
+				RegisterHooks    					// Our hook registering function
+		};
 
 
 
@@ -272,14 +272,14 @@ static int SimpleTemplateHandler (request_rec *req_p)
 /*
 
   Open the json file
-  
+
   find the required project by uuid 
-  
+
   load the required output template
-  
+
   replace the keys within the template by the project's values
  */
- 
+
 
 static char * RunModule (const char *records_file_s, const char * const record_key_s, const char * const record_value_s, const char *const template_filename_s)
 {
@@ -317,66 +317,72 @@ static char * RunModule (const char *records_file_s, const char * const record_k
 
 											if (end_p)
 												{
-													 if (AppendToByteBuffer (buffer_p, cursor_p, start_p - cursor_p))
-														 {
-															 char *variable_s = NULL;
+													if (AppendToByteBuffer (buffer_p, cursor_p, start_p - cursor_p))
+														{
+															char *variable_s = NULL;
 
-															 start_p += start_tag_length;
-															 variable_s = CopyToNewString (start_p, end_p - start_p, false);
+															start_p += start_tag_length;
+															variable_s = CopyToNewString (start_p, end_p - start_p, false);
 
-															 if (variable_s)
-																 {
-																	 const json_t *value_p = json_object_get (record_p, variable_s);
+															if (variable_s)
+																{
+																	const json_t *value_p = json_object_get (record_p, variable_s);
 
-																	 if (value_p)
-																		 {
-																			 if (json_is_string (value_p))
-																				 {
-																					 const char *value_s = json_string_value (value_p);
+																	ap_log_rerror (__FILE__, __LINE__, APLOG_MODULE_INDEX, APLOG_INFO, APR_SUCCESS, req_p, "Found variable \"%s\"", variable_s);
 
-																					 if (AppendStringToByteBuffer (buffer_p, value_s))
-																						 {
+																	if (value_p)
+																		{
+																			if (json_is_string (value_p))
+																				{
+																					const char *value_s = json_string_value (value_p);
 
-																						 }
-																				 }
-																			 else if (json_is_array (value_p))
-																				 {
-																					 const size_t array_size = json_array_size (value_p);
-																					 size_t i;
-																					 bool first_entry_flag = true;
+																					if (AppendStringToByteBuffer (buffer_p, value_s))
+																						{
 
-																					 for (i = 0; i < array_size; ++ i)
-																						 {
-																							 const json_t *element_p = json_array_get (value_p, i);
+																						}
+																				}
+																			else if (json_is_array (value_p))
+																				{
+																					const size_t array_size = json_array_size (value_p);
+																					size_t i;
+																					bool first_entry_flag = true;
 
-																							 if (json_is_string (element_p))
-																								 {
-																									 const char *value_s = json_string_value (element_p);
+																					for (i = 0; i < array_size; ++ i)
+																						{
+																							const json_t *element_p = json_array_get (value_p, i);
 
-																									 if (first_entry_flag)
-																										 {
-																											 if (AppendStringToByteBuffer (buffer_p, value_s))
-																												 {
-																													 first_entry_flag = false;
-																												 }
-																										 }
-																									 else
-																										 {
-																											 if (!AppendStringsToByteBuffer (buffer_p, ", ", value_s, NULL))
-																												 {
+																							if (json_is_string (element_p))
+																								{
+																									const char *value_s = json_string_value (element_p);
 
-																												 }
-																										 }
-																								 }
-																						 }
+																									if (first_entry_flag)
+																										{
+																											if (AppendStringToByteBuffer (buffer_p, value_s))
+																												{
+																													first_entry_flag = false;
+																												}
+																										}
+																									else
+																										{
+																											if (!AppendStringsToByteBuffer (buffer_p, ", ", value_s, NULL))
+																												{
+
+																												}
+																										}
+																								}
+																						}
 
 
-																				 }
-																		 }
-																 }
+																				}
+																		}
+																	else
+																		{
+																			ap_log_rerror (__FILE__, __LINE__, APLOG_MODULE_INDEX, APLOG_ERR, APR_BADARG, req_p, "No value for variable \"%s\" in record", variable_s);
+																		}
+																}
 
-															 cursor_p = end_p + end_tag_length;
-														 }
+															cursor_p = end_p + end_tag_length;
+														}
 												}
 										}
 
@@ -387,13 +393,29 @@ static char * RunModule (const char *records_file_s, const char * const record_k
 
 									result_s = DetachByteBufferData (buffer_p);
 								}		/* if (buffer_p) */
+							else
+								{
+									ap_log_rerror (__FILE__, __LINE__, APLOG_MODULE_INDEX, APLOG_ERR, APR_BADARG, req_p, "Failed to allocate template buffer");
+								}
 
 						}		/* if (template_s) */
+					else
+						{
+							ap_log_rerror (__FILE__, __LINE__, APLOG_MODULE_INDEX, APLOG_ERR, APR_BADARG, req_p, "Failed to read template from \"%s\"", template_filename_s);
+						}
 
 				}		/* if (record_p) */
+			else
+				{
+					ap_log_rerror (__FILE__, __LINE__, APLOG_MODULE_INDEX, APLOG_ERR, APR_BADARG, req_p, "Failed to get record with key \"%s\" & value \"%s\"", record_key_s, record_value_s);
+				}
 
 			json_decref (records_p);
 		}		/* if (records_p) */
+	else
+		{
+			ap_log_rerror (__FILE__, __LINE__, APLOG_MODULE_INDEX, APLOG_ERR, APR_BADARG, req_p, "Failed to load records from \"%s\"", records_file_s);
+		}
 
 	return result_s;
 }
@@ -404,12 +426,12 @@ static const json_t *GetRecordByKey (const json_t *records_p, const char * const
 {
 	size_t i;
 	const size_t num_records = json_array_size (records_p);
-	
+
 	for (i = 0; i < num_records; ++ i)
 		{
 			const json_t *record_p = json_array_get (records_p, i);
 			const char *value_s = GetJSONString (record_p, key_s);
-			
+
 			if (value_s)
 				{
 					if (strcmp (value_s, search_s) == 0)
@@ -417,12 +439,12 @@ static const json_t *GetRecordByKey (const json_t *records_p, const char * const
 							return record_p;
 						}				
 				}
-		
+
 		}
- 
- return NULL;
+
+	return NULL;
 }
- 
+
 
 
 static const char *GetParameterValue (apr_table_t *params_p, const char * const param_s, apr_pool_t *pool_p)
