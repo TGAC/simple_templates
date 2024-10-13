@@ -62,7 +62,7 @@ static const char *GetParameterValue (apr_table_t *params_p, const char * const 
 
 static const json_t *GetRecordByKey (const json_t *records_p, const char * const key_s, const char * const search_s);
 
-static char * RunModule (const char *records_file_s, const char * const record_key_s, const char * const record_value_s, const char *const template_filename_s);
+static char *RunModule (const char *records_file_s, const char * const record_key_s, const char * const record_value_s, const char *const template_filename_s, request_rec *req_p);
 
 
 /*
@@ -241,7 +241,7 @@ static int SimpleTemplateHandler (request_rec *req_p)
 
 											if (record_value_s)
 												{
-													res_s = RunModule (config_p -> mstc_records_s, record_key_s, record_value_s, template_filename_s);
+													res_s = RunModule (config_p -> mstc_records_s, record_key_s, record_value_s, template_filename_s, req_p);
 
 													if (res_s)
 														{
@@ -281,7 +281,7 @@ static int SimpleTemplateHandler (request_rec *req_p)
  */
 
 
-static char * RunModule (const char *records_file_s, const char * const record_key_s, const char * const record_value_s, const char *const template_filename_s)
+static char *RunModule (const char *records_file_s, const char * const record_key_s, const char * const record_value_s, const char *const template_filename_s, request_rec *req_p)
 {
 	char *result_s = NULL;
 	json_error_t err;
