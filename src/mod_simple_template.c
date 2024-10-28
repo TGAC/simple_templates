@@ -58,37 +58,38 @@ static const char *SetRootURL (cmd_parms *cmd_p, void *cfg_p, const char *arg_s)
 
 static const char *SetTemplatesDir (cmd_parms *cmd_p, void *cfg_p, const char *arg_s);
 
+static const char *SetFallbackFile (cmd_parms *cmd_p, void *cfg_p, const char *arg_s);
+
 static const char *GetParameterValue (apr_table_t *params_p, const char * const param_s, apr_pool_t *pool_p);
 
 static const json_t *GetRecordByKey (const json_t *records_p, const char * const key_s, const char * const search_s);
 
-static char *RunModule (const char *records_file_s, const char * const record_key_s, const char * const record_value_s, const char *const template_filename_s, request_rec *req_p);
-
+static char *RunModule (const char *records_file_s, const char * const record_key_s, const char * const record_value_s, const char *const template_filename_s, const char * const fallback_filename_s, request_rec *req_p);
 
 /*
  * STATIC VARIABLES
  */
 
 static const command_rec s_template_directives [] =
-		{
-				AP_INIT_TAKE1 ("SimpleTemplateRecordsFile", SetRecordsFile, NULL, ACCESS_CONF, "The filename of the records file to use"),
-				AP_INIT_TAKE1 ("SimpleTemplateRootURL", SetRootURL, NULL, ACCESS_CONF, "The root url to determine the template from"),
-				AP_INIT_TAKE1 ("SimpleTemplateTemplatesDir", SetTemplatesDir, NULL, ACCESS_CONF, "The root directory toring the templates"),
-
-				{ NULL }
-		};
+{
+	AP_INIT_TAKE1 ("SimpleTemplateRecordsFile", SetRecordsFile, NULL, ACCESS_CONF, "The filename of the records file to use"),
+	AP_INIT_TAKE1 ("SimpleTemplateRootURL", SetRootURL, NULL, ACCESS_CONF, "The root url to determine the template from"),
+	AP_INIT_TAKE1 ("SimpleTemplateTemplatesDir", SetTemplatesDir, NULL, ACCESS_CONF, "The root directory toring the templates"),
+	AP_INIT_TAKE1 ("SimpleTemplateFallbackFile", SetFallbackFile, NULL, ACCESS_CONF, "The filename to use if the template file fails to be generated"),
+	{ NULL }
+};
 
 /* Define our module as an entity and assign a function for registering hooks  */
 module AP_MODULE_DECLARE_DATA simple_template_module =
-		{
-				STANDARD20_MODULE_STUFF,
-				CreateSimpleTemplateDirectoryConfig,   	// Per-directory configuration handler
-				MergeSimpleTemplateDirectoryConfig,   	// Merge handler for per-directory configurations
-				CreateSimpleTemplateServerConfig,				// Per-server configuration handler
-				MergeSimpleTemplateServerConfig,				// Merge handler for per-server configurations
-				s_template_directives,			// Any directives we may have for httpd
-				RegisterHooks    					// Our hook registering function
-		};
+{
+	STANDARD20_MODULE_STUFF,
+	CreateSimpleTemplateDirectoryConfig,   	// Per-directory configuration handler
+	MergeSimpleTemplateDirectoryConfig,   	// Merge handler for per-directory configurations
+	CreateSimpleTemplateServerConfig,				// Per-server configuration handler
+	MergeSimpleTemplateServerConfig,				// Merge handler for per-server configurations
+	s_template_directives,			// Any directives we may have for httpd
+	RegisterHooks    					// Our hook registering function
+};
 
 
 
@@ -129,6 +130,17 @@ static const char *SetTemplatesDir (cmd_parms *cmd_p, void *cfg_p, const char *a
 	return NULL;
 }
 
+
+static const char *SetFallbackFile (cmd_parms *cmd_p, void *cfg_p, const char *arg_s)
+{
+	ModSimpleTemplateConfig *config_p = (ModSimpleTemplateConfig *) cfg_p;
+
+	config_p -> mstc_fallback_s = arg_s;
+
+	return NULL;
+}
+
+
 static void *MergeSimpleTemplateDirectoryConfig (apr_pool_t *pool_p, void *base_config_p, void *new_config_p)
 {
 	ModSimpleTemplateConfig *base_template_config_p = (ModSimpleTemplateConfig *) base_config_p;
@@ -147,6 +159,11 @@ static void *MergeSimpleTemplateDirectoryConfig (apr_pool_t *pool_p, void *base_
 	if (new_template_config_p -> mstc_templates_dir_s)
 		{
 			base_template_config_p -> mstc_templates_dir_s = new_template_config_p -> mstc_templates_dir_s;
+		}
+
+	if (new_template_config_p -> mstc_fallback_s)
+		{
+			base_template_config_p -> mstc_fallback_s = new_template_config_p -> mstc_fallback_s;
 		}
 
 	return base_config_p;
@@ -182,6 +199,7 @@ static ModSimpleTemplateConfig *CreateConfig (apr_pool_t *pool_p, server_rec *se
 			config_p -> mstc_records_s = NULL;
 			config_p -> mstc_root_url_s = NULL;
 			config_p -> mstc_templates_dir_s = NULL;
+			config_p -> mstc_fallback_s = NULL;
 		}
 
 	return config_p;
@@ -241,7 +259,7 @@ static int SimpleTemplateHandler (request_rec *req_p)
 
 											if (record_value_s)
 												{
-													res_s = RunModule (config_p -> mstc_records_s, record_key_s, record_value_s, template_filename_s, req_p);
+													res_s = RunModule (config_p -> mstc_records_s, record_key_s, record_value_s, template_filename_s, config_p -> mstc_fallback_s, req_p);
 
 													if (res_s)
 														{
@@ -281,7 +299,7 @@ static int SimpleTemplateHandler (request_rec *req_p)
  */
 
 
-static char *RunModule (const char *records_file_s, const char * const record_key_s, const char * const record_value_s, const char *const template_filename_s, request_rec *req_p)
+static char *RunModule (const char *records_file_s, const char * const record_key_s, const char * const record_value_s, const char *const template_filename_s, const char * const fallback_filename_s, request_rec *req_p)
 {
 	char *result_s = NULL;
 	json_error_t err;
@@ -415,6 +433,14 @@ static char *RunModule (const char *records_file_s, const char * const record_ke
 	else
 		{
 			ap_log_rerror (__FILE__, __LINE__, APLOG_MODULE_INDEX, APLOG_ERR, APR_BADARG, req_p, "Failed to load records from \"%s\"", records_file_s);
+		}
+
+	if (!result_s)
+		{
+			if (fallback_filename_s)
+				{
+					result_s = GetFileContentsAsStringByFilename (fallback_filename_s);
+				}
 		}
 
 	return result_s;

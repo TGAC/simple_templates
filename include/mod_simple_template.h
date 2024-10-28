@@ -20,9 +20,15 @@ typedef struct
 	/** The root url to determine the template page from */
 	const char *mstc_root_url_s;
 
-
 	/** The root directory containing the templates */
 	const char *mstc_templates_dir_s;
+
+	/** 
+	 * The filename of the html file to return upon failure. 
+	 * If this is NULL, then a 500 runtime error will be returned
+	 * instead.
+	 */
+	const char *mstc_fallback_s;
 
 
 } ModSimpleTemplateConfig;
